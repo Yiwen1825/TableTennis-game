@@ -8,15 +8,20 @@ const app = $('app'), canvas = $('gl');
 /* ---------------- 物理常數（公尺、秒、rad/s） ---------------- */
 const R = 0.02, G = 9.81;
 const KD = 0.126;      // 空氣阻力：a = -KD |v| v
-const KM = 0.0018;     // 馬格努斯：a = KM (ω × v)
+const KL = 0.5 * 1.2 * Math.PI * 0.02 * 0.02 / 0.0027;   // 馬格努斯：a = KL·CL·v²，方向 ω × v
+/* 升力係數隨「旋轉比」S = Rω/v 增加，但會飽和：轉速很高時力量增加得越來越慢 */
+const liftCoef = S => 0.32 * S / (1 + 0.55 * S);
 const SPIN_DECAY = 0.04;
 const HL = 1.37, HW = 0.7625, NET_H = 0.1525, NET_W = 0.915, FLOOR = -0.76;
 const E_TABLE = 0.89, MU_TABLE = 0.3, M = 0.0027, I = (2/3) * M * R * R; // 空心球殼
 const DT = 0.001, TAU = Math.PI * 2;
-const C_EAT = 0.004;   // 吃轉：來球旋轉造成的回球速度偏差係數
+const C_EAT = 0.004;   // （保留舊常數名稱）
+/* 吃轉：來球旋轉讓回球偏掉的速度（m/s），轉越強偏越多，但會飽和，最多約 2 m/s */
+const EAT_MAX = 2.0, EAT_W0 = 500;
+const eatSat = x => Math.sign(x) * EAT_MAX * Math.tanh(Math.abs(x) / EAT_W0);
 const LAMBDA = 0.95;   // 玩家刷球抵銷吃轉的效率
-const MAXSPIN = 55;    // 玩家最大轉速 r/s（乘上 SPIN_GAIN 前）
-const SPIN_GAIN = 1.35; // 整體旋轉倍率：雙方所有擊球、發球的轉速都乘上它
+const MAXSPIN = 150;   // 擊球轉速上限 r/s（板型倍率前）
+const SPIN_GAIN = 1.0;  // 整體旋轉倍率：各技術轉速已直接依真實數據設定
 const BASE_SPEED = 0.8; // 整體球速倍率（整場節奏變慢，弧線形狀不變）
 
 /* 板型：spin 製造上旋/側旋的能力、chop 製造下旋的能力、tempo 出球時間倍率（越小越快）、
@@ -37,10 +42,11 @@ const RACKETS = {
 };
 const RK_KEYS = Object.keys(RACKETS);
 
+/* 電腦難度：f＝電腦擊球轉速佔真實數據的比例，serve＝發球轉速 r/s */
 const LEVELS = {
-  easy:   { spin: 22, sigma: 0.16, skill: 0.5,  corner: 0.42 },
-  normal: { spin: 35, sigma: 0.10, skill: 0.75, corner: 0.58 },
-  hard:   { spin: 48, sigma: 0.05, skill: 0.9,  corner: 0.66 }
+  easy:   { f: 0.6, serve: 30, sigma: 0.16, skill: 0.5,  corner: 0.42 },
+  normal: { f: 0.8, serve: 45, sigma: 0.10, skill: 0.75, corner: 0.58 },
+  hard:   { f: 1.0, serve: 60, sigma: 0.05, skill: 0.9,  corner: 0.66 }
 };
 
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
@@ -67,9 +73,11 @@ function bounceTable(s){
 function stepBall(s, dt, collide, ev, t){
   const v = s.v, w = s.w, p = s.p;
   const sp = Math.hypot(v[0], v[1], v[2]);
-  const ax = -KD*sp*v[0] + KM*(w[1]*v[2] - w[2]*v[1]);
-  const ay = -KD*sp*v[1] + KM*(w[2]*v[0] - w[0]*v[2]) - G;
-  const az = -KD*sp*v[2] + KM*(w[0]*v[1] - w[1]*v[0]);
+  const wm = Math.hypot(w[0], w[1], w[2]);
+  const km = (wm > 1e-6 && sp > 1e-6) ? KL * liftCoef(R * wm / sp) * sp / wm : 0;
+  const ax = -KD*sp*v[0] + km*(w[1]*v[2] - w[2]*v[1]);
+  const ay = -KD*sp*v[1] + km*(w[2]*v[0] - w[0]*v[2]) - G;
+  const az = -KD*sp*v[2] + km*(w[0]*v[1] - w[1]*v[0]);
   v[0] += ax*dt; v[1] += ay*dt; v[2] += az*dt;
   const pz = p[2];
   p[0] += v[0]*dt; p[1] += v[1]*dt; p[2] += v[2]*dt;
@@ -209,7 +217,10 @@ function computeEat(w, v, l){
   const sp = Math.hypot(v[0], v[1], v[2]) || 1;
   const d = [v[0]/sp, v[1]/sp, v[2]/sp];
   const cx = w[1]*d[2] - w[2]*d[1], cy = w[2]*d[0] - w[0]*d[2], cz = w[0]*d[1] - w[1]*d[0];
-  return { ev: -C_EAT*cy, el: -C_EAT*(cx*l[0] + cz*l[2]) };
+  const cm = Math.hypot(cx, cy, cz);
+  if (cm < 1e-6) return { ev: 0, el: 0 };
+  const k = eatSat(cm) / cm;
+  return { ev: -k*cy, el: -k*(cx*l[0] + cz*l[2]) };
 }
 function reduce(e, c){ return e*c < 0 ? Math.sign(e) * Math.max(0, Math.abs(e) - Math.abs(c)) : e; }
 /* 從玩家視角描述球的旋轉 */
@@ -256,7 +267,7 @@ function executeHit(h, o){
     Eabs = Math.hypot(e.ev, e.el);
     let ev = e.ev * rk.eat, el = e.el * rk.eat;
     if (o.skill != null) { ev *= 1 - o.skill; el *= 1 - o.skill; }
-    else { ev = reduce(ev, LAMBDA*C_EAT*Tw); el = reduce(el, LAMBDA*C_EAT*Sw); }
+    else { ev = reduce(ev, LAMBDA*eatSat(Tw)); el = reduce(el, LAMBDA*eatSat(Sw)); }
     if (o.comp) { ev *= 1 - (ev > 0 ? o.comp.up : o.comp.down); el *= 1 - o.comp.side; }
     v[0] += el*l[0]; v[1] += ev; v[2] += el*l[2];
     res = { ev, el };
@@ -294,9 +305,9 @@ function serveX(){ return clamp(bat.gx - 0.1, -HW - 0.12, HW + 0.12); }
 function aiServe(){
   const lv = LEVELS[level], sgn = Math.random() < 0.5 ? -1 : 1;
   const menu = [
-    { top: -lv.spin,     side: 0,              z: [0.3, 0.55] },   // 下旋短球
-    { top: -lv.spin*0.6, side: sgn*lv.spin*0.7, z: [0.4, 0.85] },   // 側下旋
-    { top: lv.spin*0.7,  side: 0,              z: [0.95, 1.22] },  // 上旋長球
+    { top: -lv.serve,     side: 0,                 z: [0.3, 0.55] },   // 下旋短球
+    { top: -lv.serve*0.6, side: sgn*lv.serve*0.7,  z: [0.4, 0.85] },   // 側下旋
+    { top: lv.serve*0.7,  side: 0,                 z: [0.95, 1.22] },  // 上旋長球
     { top: 0,            side: 0,              z: [0.6, 1.1] }     // 不轉
   ];
   const o = menu[Math.floor(Math.random()*menu.length)];
@@ -306,23 +317,26 @@ function aiServe(){
 }
 let aiStroke = '';
 function aiHit(){
-  const lv = LEVELS[level];
+  const lv = LEVELS[level], f = lv.f;
+  const mid = k => (SPIN_RANGE[k][0] + SPIN_RANGE[k][1]) / 2 * f * rand(0.85, 1.1);
   const tIn = relSpin(ball.w, ball.v).top * -1;   // 從電腦的視角看
   const short = ball.p[2] > -HL + 0.1;             // 球還在電腦的台內
-  let top, tz = rand(0.45, 1.22), want = null;
-  if (short && tIn < -6 && Math.random() < 0.45) { top = -lv.spin*0.7; tz = rand(0.3, 0.5); want = 0.02; aiStroke = '擺短'; }
-  else if (aRk === 'defense' && tIn > 6) { top = -lv.spin; want = 0.1; aiStroke = '削球'; }
+  let top, tz = rand(0.45, 1.22), want = null, side = 0;
+  if (short && tIn < -6 && Math.random() < 0.45) { top = -mid('push'); tz = rand(0.3, 0.5); want = 0.03; aiStroke = '擺短'; }
+  else if (aRk === 'defense' && tIn > 6) { top = -mid('chop'); want = 0.1; aiStroke = '削球'; }
   else if (tIn < -6) {
-    if (Math.random() < 0.55) { top = lv.spin; aiStroke = short ? '挑球' : '拉球'; }
-    else { top = -lv.spin*0.7; want = 0.022; aiStroke = '切球'; }
+    if (Math.random() < 0.55) { top = short ? mid('flick') : mid('loop'); aiStroke = short ? '挑球' : '拉球'; }
+    else { top = -mid('push'); want = 0.03; aiStroke = '切球'; }
   } else if (tIn > 6) {
-    if (Math.random() < 0.6) { top = lv.spin*0.8; aiStroke = '拉球'; }
-    else { top = -lv.spin*0.5; want = 0.09; aiStroke = '削球'; }
+    const r = Math.random();
+    if (r < 0.45) { top = mid('loop'); aiStroke = '拉球'; }
+    else if (r < 0.75) { top = mid('block') * 0.6; want = 0.045; aiStroke = '擋球'; }
+    else { top = -mid('chop'); want = 0.09; aiStroke = '削球'; }
   } else {
-    if (Math.random() < 0.7) { top = lv.spin*0.9; aiStroke = '拉球'; }
-    else { top = -lv.spin*0.6; want = 0.022; aiStroke = '切球'; }
+    if (Math.random() < 0.7) { top = mid('loop'); aiStroke = '拉球'; }
+    else { top = mid('drive'); want = 0.04; aiStroke = '攻球'; }
   }
-  const side = (Math.random() - 0.5) * lv.spin * 0.7;
+  side = (Math.random() - 0.5) * Math.abs(top) * 0.35;
   aiSwing();
   executeHit('A', { top, side, tx: rand(-lv.corner, lv.corner), tz, sigma: lv.sigma, isServe: false, skill: lv.skill, rk: RACKETS[aRk], want });
 }
@@ -345,29 +359,40 @@ function classifyStroke(sp, vx, vy){
   if (vy < -0.4) return 'push';
   return pose.fore ? 'drive' : 'punch';
 }
-function strokeParams(type, sp, vx, vy, pw){
+/* 各技術轉速（r/s）參考真實數據：揮拍越快越接近範圍上限
+   拉球 110–150｜擰球 90–120｜削球 60–90｜切球 50–75｜挑球 40–75｜快撥 30–60｜攻球 20–50｜擋球 15–40｜扣殺 5–20 */
+const SPIN_RANGE = {
+  loop: [110, 150], twist: [90, 120], chop: [60, 90], push: [50, 75], flick: [40, 75],
+  punch: [30, 60], drive: [20, 50], block: [15, 40], smash: [5, 20]
+};
+function rangeSpin(type, t){ const r = SPIN_RANGE[type]; return r[0] + (r[1] - r[0]) * clamp(t, 0, 1); }
+function strokeParams(type, sp, vx, vy, pw, inTop){
   const dirX = sp > 0.4 ? vx / sp : 0;
-  let top, side = clamp(vx * 3, -20, 20), depth, want, sig = 1;
+  let top, side = clamp(vx * 5, -30, 30), depth, want, sig = 1;
   switch (type) {
-    case 'loop':  top = clamp(25 + vy*5, 25, MAXSPIN); depth = 0.85 + 0.4*pw; want = 0.07; break;              // 高弧線帶強上旋，往下栽
-    case 'flick': top = clamp(15 + vy*4, 15, 32); depth = 0.85 + 0.35*pw; want = 0.035; sig = 1.1; break;       // 台內短球快速上挑
-    case 'twist': top = clamp(18 + sp*3, 18, 36); side = clamp(12 + vx*5, 15, 35);                               // 反手手腕擰轉：側上旋
-                  depth = 0.8 + 0.4*pw; want = 0.04; sig = 1.15; break;
-    case 'push':  top = -clamp(12 + (-vy)*7, 12, 40); side = clamp(vx*2, -10, 10); want = 0.03; sig = 0.8;     // 輕切擺短，大力一點變劈長
+    case 'loop':  top = rangeSpin('loop', (sp - 2.5) / 4.5);                                                   // 弧圈：極強上旋，往下栽
+                  depth = 0.85 + 0.4*pw; want = 0.07; break;
+    case 'flick': top = rangeSpin('flick', (sp - 1.2) / 3.8); depth = 0.85 + 0.35*pw; want = 0.035; sig = 1.1; break; // 台內上挑
+    case 'twist': { const T = rangeSpin('twist', (sp - 1.2) / 3);                                               // 擰拉：強烈側上旋
+                  top = T * 0.8; side = T * 0.6; depth = 0.8 + 0.4*pw; want = 0.04; sig = 1.15; break; }
+    case 'push':  top = -rangeSpin('push', (sp - 0.4) / 3); side = clamp(vx*3, -15, 15); want = 0.045; sig = 0.8; // 輕切擺短，大力一點變劈長
                   depth = sp < 1.8 ? 0.3 + 0.15*sp/1.8 : 0.9 + 0.3*Math.min(1, (sp - 1.8)/2); break;
-    case 'chop':  top = -clamp(28 + (-vy)*5, 28, MAXSPIN); side = clamp(vx*3, -15, 15);                          // 離台削：強下旋、弧線飄、落點深
-                  depth = 0.95 + 0.3*pw; want = 0.11; sig = 0.75; break;
-    case 'smash': top = clamp(8 + vy*2, 4, 15); side = clamp(vx*2, -10, 10); depth = 1.0 + 0.25*pw; want = 0.015; sig = 1.4; break;
-    case 'block': top = clamp(vy*4, -8, 8); side = 0; depth = 0.7 + 0.45*pw; want = 0.045; sig = 0.9; break;
-    default:      top = clamp(8 + vy*5, 0, 22); depth = 0.7 + 0.5*pw; want = 0.04;                              // 攻球／快撥
+    case 'chop':  top = -Math.min(95, rangeSpin('chop', (sp - 2.5) / 4.5) + 0.2*Math.max(0, inTop));            // 削球：借對方上旋反轉成強下旋
+                  side = clamp(vx*4, -20, 20); depth = 0.95 + 0.3*pw; want = 0.11; sig = 0.75; break;
+    case 'smash': top = rangeSpin('smash', (sp - 3.5) / 5); side = clamp(vx*2, -10, 10);                       // 扣殺：幾乎不轉
+                  depth = 0.9 + 0.2*pw; want = 0.015; sig = 1.25; break;
+    case 'block': { const mag = clamp(Math.abs(inTop) * 0.3, 15, 40);                                          // 擋球：轉速取決於來球
+                  top = (inTop < -5 ? -1 : 1) * mag; side = 0; depth = 0.7 + 0.45*pw; want = 0.045; sig = 0.9; break; }
+    case 'punch': top = rangeSpin('punch', (sp - 0.8) / 4); depth = 0.7 + 0.5*pw; want = 0.04; break;        // 快撥：速度大於旋轉
+    default:      top = rangeSpin('drive', (sp - 0.8) / 5); depth = 0.7 + 0.5*pw; want = 0.04;               // 攻球：撞擊為主
   }
   const tx = clamp(ball.p[0]*0.35 + dirX*0.6*Math.min(1, sp/2.5), -0.66, 0.66);
   // 每種技術本身的拍面角度能吃住多少來球旋轉：up＝對上旋（會往上飛）、down＝對下旋（會往下掉）
   const COMP = {
-    loop:  { up: 0.5, down: 0,    side: 0.3 },   // 對下旋靠往上摩擦抵銷；對拉要蓋拍
+    loop:  { up: 0.85, down: 0,   side: 0.3 },   // 對下旋靠往上摩擦抵銷；對拉（反拉）要蓋拍
     flick: { up: 0.3, down: 0.3,  side: 0.3 },
     twist: { up: 0.3, down: 0.45, side: 0.55 },
-    push:  { up: 0,   down: 0.85, side: 0.3 },   // 開拍吃下旋很穩，但搓上旋會冒高
+    push:  { up: 0,   down: 0.95, side: 0.3 },   // 開拍吃下旋很穩，但搓上旋會冒高
     chop:  { up: 0.6, down: 0.5,  side: 0.3 },
     smash: { up: 0.6, down: 0.6,  side: 0.3 },
     block: { up: 0.7, down: 0,    side: 0.3 },   // 蓋拍擋上旋很穩，擋下旋會下網
@@ -379,8 +404,8 @@ function strokeParams(type, sp, vx, vy, pw){
 function serveName(top, side, power){
   const len = power < 0.35 ? '短' : power > 0.65 ? '長' : '';
   let t;
-  if (Math.abs(side) > 12) t = top < -8 ? '側下旋' : top > 8 ? '側上旋' : '側旋';
-  else t = top < -8 ? '下旋' : top > 8 ? '上旋' : '不轉';
+  if (Math.abs(side) > 20) t = top < -15 ? '側下旋' : top > 15 ? '側上旋' : '側旋';
+  else t = top < -15 ? '下旋' : top > 15 ? '上旋' : '不轉';
   return len + t + '發球';
 }
 function playerContact(off, serve){
@@ -389,7 +414,7 @@ function playerContact(off, serve){
   const power = clamp(sp / 7, 0, 1);
   bat.flash = 0.18;
   if (serve) {
-    let top = clamp(vy * 8, -MAXSPIN, MAXSPIN), side = clamp(vx * 6, -40, 40);
+    let top = clamp(vy * 14, -80, 80), side = clamp(vx * 10, -60, 60);
     if (sp < 0.8) { top *= 0.4; side *= 0.4; }
     const dirX = sp > 0.4 ? vx / sp : 0;
     const tz = -(0.3 + 0.95*power), tx = clamp(ball.p[0]*0.3 + dirX*0.55, -0.62, 0.62);
@@ -406,7 +431,8 @@ function playerContact(off, serve){
   if (off > 0.65) q *= 1 - (off - 0.65) / 0.35 * 0.6;         // 打到拍緣
   const lob = shiftDown || lobOn;
   const type = classifyStroke(sp, vx, vy);
-  const sk = strokeParams(type, sp, vx, vy, pw);
+  const inTop = relSpin(ball.w, ball.v).top;                  // 來球的上旋（負值＝下旋），擋球、削球會借它
+  const sk = strokeParams(type, sp, vx, vy, pw, inTop);
   const name = lob ? '放高球' : (pose.fore ? '正手' : '反手') + STROKES[type];
   const info = executeHit('P', { top: sk.top, side: sk.side, tx: sk.tx, tz: sk.tz, sigma: (0.025 + 0.22*(1 - q)) * sk.sig, isServe: false, rk, lob, want: sk.want, comp: sk.comp });
   if (lobOn) setLob(false);
@@ -962,9 +988,9 @@ function frame(now){
 
   ballMesh.position.set(ball.p[0], ball.p[1], ball.p[2]);
   const wm = Math.hypot(ball.w[0], ball.w[1], ball.w[2]);
-  if (wm > 0.1) {   // 旋轉視覺化放慢約 16 倍，避免看起來像倒轉
+  if (wm > 0.1) {   // 旋轉視覺化放慢約 40 倍，避免看起來像倒轉
     axis.set(ball.w[0]/wm, ball.w[1]/wm, ball.w[2]/wm);
-    qRot.setFromAxisAngle(axis, wm * sdt * 0.06);
+    qRot.setFromAxisAngle(axis, Math.min(wm * sdt * 0.1, 1.2));
     ballMesh.quaternion.premultiply(qRot);
   }
   const over = Math.abs(ball.p[0]) <= HW && Math.abs(ball.p[2]) <= HL && ball.p[1] > -0.01;
