@@ -1,0 +1,99 @@
+/* 基本重設（原本由 Artifact 外框提供，獨立網頁需要自己加） */
+*,*::before,*::after{box-sizing:border-box}
+:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+body{margin:0}
+[hidden]{display:none!important}
+
+/* Layout: full-bleed 3D arena canvas from the server's end; HUD floats over it — options top-left, scoreboard top-center, spin read-outs along the bottom */
+:root{
+  --arena:#0d1220;
+  --panel:rgba(15,22,40,.8);
+  --line:rgba(160,182,228,.2);
+  --fg:#e8edf7;
+  --muted:#9aa7c2;
+  --ball:#ff8a2a;
+  --good:#5fd38d;
+  --bad:#ff6474;
+  --f-num:"Oxanium","Noto Sans TC",ui-monospace,monospace;
+  --f-body:"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
+  color-scheme:dark;
+}
+html,body{height:100%;overflow:hidden}
+body{background:var(--arena);color:var(--fg);font-family:var(--f-body);font-size:14px;-webkit-user-select:none;user-select:none}
+#app{position:relative;height:100%;overflow:hidden}
+#gl{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:none}
+
+.hud{position:absolute;inset:0;pointer-events:none;display:flex;flex-direction:column;justify-content:space-between;gap:12px;
+  padding-block:12px;padding-left:max(16px, env(safe-area-inset-left, 0px));padding-right:max(16px, env(safe-area-inset-right, 0px))}
+.top{display:grid;grid-template-columns:1fr auto 1fr;align-items:start;gap:12px}
+.brand{display:flex;flex-direction:column;gap:8px;pointer-events:auto;justify-self:start;min-width:0}
+.brand h1{margin:0;font:700 15px/1.2 var(--f-body);letter-spacing:.06em;display:flex;align-items:center;gap:8px}
+.brand h1::before{content:"";width:10px;height:10px;border-radius:50%;background:var(--ball);box-shadow:0 0 10px var(--ball)}
+.opts{display:flex;flex-wrap:wrap;gap:6px}
+.opt{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:5px 9px;display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer}
+.opt input{accent-color:var(--ball);margin:0}
+.opt select{background:transparent;color:var(--fg);border:0;font:inherit;padding:0;cursor:pointer}
+.opt select option{background:#141b2e;color:var(--fg)}
+.opt:focus-within{outline:2px solid var(--ball);outline-offset:1px}
+
+.score{justify-self:center;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:8px 18px 9px;
+  display:grid;grid-template-columns:auto auto auto;align-items:center;column-gap:14px;text-align:center;backdrop-filter:blur(6px)}
+.side{display:flex;flex-direction:column;align-items:center}
+.who{font-size:12px;color:var(--muted);display:flex;gap:6px;align-items:center;letter-spacing:.08em}
+.who .srv{width:7px;height:7px;border-radius:50%;background:var(--ball);visibility:hidden}
+.who.serving .srv{visibility:visible}
+.num{font:700 42px/1.05 var(--f-num);font-variant-numeric:tabular-nums;min-width:1.4em}
+.colon{font:500 26px/1 var(--f-num);color:var(--muted)}
+.status{grid-column:1/-1;font-size:12px;color:var(--muted);margin-top:2px;max-width:22em}
+
+.bottom{display:grid;grid-template-columns:minmax(0,300px) minmax(0,1fr) minmax(0,300px);gap:12px;align-items:end}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px;min-width:0;backdrop-filter:blur(6px)}
+.lab{font-size:11px;letter-spacing:.16em;color:var(--muted)}
+.card .main{font-size:15px;font-weight:500;margin-top:4px;font-variant-numeric:tabular-nums}
+.card .sub{font-size:12.5px;color:var(--muted);margin-top:3px;line-height:1.5}
+.good{color:var(--good)!important}.bad{color:var(--bad)!important}.hint{color:var(--ball)!important}
+.help{justify-self:center;text-align:center;font-size:12.5px;line-height:1.7;color:var(--muted);max-width:44em}
+.help b{color:var(--fg);font-weight:500}
+.help .keys{color:var(--ball)}
+
+.banner{position:absolute;left:0;right:0;top:32%;text-align:center;pointer-events:none;font:700 36px/1.2 var(--f-body);letter-spacing:.08em;
+  text-shadow:0 4px 24px rgba(0,0,0,.7);padding-inline:16px}
+.banner small{display:block;font-size:16px;font-weight:500;letter-spacing:.02em;margin-top:6px;color:var(--fg)}
+.banner.win{color:var(--good)}.banner.lose{color:var(--bad)}
+.banner.pop{animation:pop .35s ease-out}
+@keyframes pop{from{transform:scale(.85);opacity:0}to{transform:none;opacity:1}}
+.toast{position:absolute;left:50%;top:46%;transform:translateX(-50%);background:var(--panel);border:1px solid var(--line);
+  padding:6px 14px;border-radius:999px;font-size:13px;pointer-events:none;white-space:nowrap;max-width:calc(100% - 32px);overflow:hidden;text-overflow:ellipsis}
+
+.overlay{position:absolute;inset:0;display:grid;place-items:center;background:rgba(8,11,20,.62);pointer-events:auto;padding-inline:16px}
+.overlay .box{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px 28px;text-align:center;display:flex;flex-direction:column;gap:10px;align-items:center}
+.final{font:700 52px/1 var(--f-num);font-variant-numeric:tabular-nums}
+.overlay p{margin:0;font-size:15px}
+button{font:500 14px var(--f-body);background:var(--ball);color:#1b0d02;border:0;border-radius:8px;padding:9px 20px;cursor:pointer}
+button:focus-visible{outline:2px solid var(--fg);outline-offset:2px}
+
+.lobBtn{font:inherit;font-size:12.5px;color:var(--fg)}
+.lobBtn[aria-pressed="true"]{background:var(--ball);color:#1b0d02;border-color:var(--ball)}
+.rk{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:9px 11px;width:250px;max-width:100%;display:flex;flex-direction:column;gap:6px}
+.rk-name{font-size:13px;font-weight:700;display:flex;align-items:center;gap:7px}
+.rk-sw{width:10px;height:10px;border-radius:3px;flex:none}
+.rk-name span.mat{font-weight:400;color:var(--muted);font-size:11.5px}
+.rk-bars{display:grid;grid-template-columns:auto 1fr;column-gap:8px;row-gap:4px;align-items:center;font-size:11px;color:var(--muted)}
+.rk-bar{height:5px;border-radius:3px;background:rgba(160,182,228,.16);overflow:hidden}
+.rk-bar i{display:block;height:100%;background:var(--ball);border-radius:3px}
+.rk-note{font-size:11.5px;color:var(--muted);line-height:1.5}
+@media (max-width:720px){
+  .rk{display:none}
+  .top{grid-template-columns:1fr;justify-items:center}
+  .score{order:-1}
+  .brand{justify-self:center;align-items:center}
+  .brand h1{display:none}
+  .num{font-size:32px}
+  .bottom{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}
+  .help{grid-column:1/-1;order:3;font-size:11.5px}
+  .card{padding:8px 10px}
+  .card .main{font-size:13px}
+  .card .sub{font-size:11.5px}
+  .banner{font-size:28px}
+}
+@media (prefers-reduced-motion:reduce){.banner.pop{animation:none}}
