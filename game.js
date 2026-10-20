@@ -1,4 +1,4 @@
-// Yi Table-Tennis YTT：物理、擊球辨識、電腦對手、球拍控制、畫面與 HUD
+// Yi Table Tennis YTT：物理、擊球辨識、電腦對手、球拍控制、畫面與 HUD
 // 需要先載入 three.js r128（index.html 已處理）
 (function(){
 const T3 = window.THREE;
