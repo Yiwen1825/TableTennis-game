@@ -184,12 +184,16 @@ function solveRally(p0, w, L, wantClear, recv, lob){
   }
   return best || fallback;
 }
-function solveServe(p0, w, L, server){
-  const recv = other(server);
-  const vys = [-2.6, -3.2, -2.0, -3.8, -1.5, -4.4, -1.0];
-  let best = null, bestErr = 1e9;
-  for (const vy of vys) {
-    let vx = (L[0]-p0[0]) / 0.75, vz = (L[2]-p0[2]) / 0.75;
+function solveServe(p0, w, L, server, minClear){
+  // 發球：在所有可行的下壓速度裡，挑「過網最低」的那一條（真實發球過網只有幾公分，第一跳落在自己端線附近）
+  const recv = other(server), want = minClear == null ? 0.03 : minClear;
+  const dir = server === 'P' ? -1 : 1;
+  let best = null, bestClear = 1e9, fallback = null, fbErr = 1e9;
+  for (const T0 of [0.6, 1.0]) {
+   if (best) break;                                 // 第一輪找到就不用再試
+   for (let vy = -0.2; vy >= -4.6; vy -= 0.3) {
+    if (best && bestClear < want + 0.015) break;     // 已經夠低了，提早結束（避免擊球瞬間卡頓）
+    let vx = (L[0]-p0[0]) / T0, vz = (L[2]-p0[2]) / T0, sol = null;
     for (let i = 0; i < 40; i++) {
       const ev = simulate(p0, [vx, vy, vz], w, 2.2, 2);
       const c1 = ev[0], c2 = ev[1];
@@ -198,19 +202,34 @@ function solveServe(p0, w, L, server){
       if (c1.type === 'table' && c1.side !== server) { vx *= 0.85; vz *= 0.85; continue; }
       if (c1.type !== 'table') {
         const behind = server === 'P' ? c1.z > HL - 0.01 : c1.z < -HL + 0.01;
-        if (behind) { vx *= 1.25; vz *= 1.25; } else { vx *= 0.85; vz *= 0.85; }
+        if (behind) { vx *= 1.2; vz *= 1.2; } else { vx *= 0.85; vz *= 0.85; }
         continue;
       }
       if (!c2) { vx *= 0.9; vz *= 0.9; continue; }
-      if (c2.type === 'net') { vx *= 1.06; vz *= 1.06; continue; }
+      if (c2.type === 'net') { vx *= 1.05; vz *= 1.05; continue; }
       const ex = L[0]-c2.x, ez = L[2]-c2.z, err = Math.hypot(ex, ez);
-      if (c2.type === 'table' && c2.side === recv && err < bestErr) { bestErr = err; best = [vx, vy, vz]; }
-      if (err < 0.02 && c2.type === 'table') break;
+      if (c2.type === 'table' && c2.side === recv) {
+        if (err < fbErr) { fbErr = err; fallback = [vx, vy, vz]; }
+        if (err < 0.04) { sol = [vx, vy, vz]; break; }
+      }
       vx += ex / c2.t * 0.9; vz += ez / c2.t * 0.9;
     }
-    if (bestErr < 0.08) return best;
+    if (!sol) continue;
+    const c = serveClear(p0, sol, w);
+    if (c >= want && c < bestClear) { bestClear = c; best = sol; }
+   }
   }
-  return best || [(L[0]-p0[0])/0.8, -1, (L[2]-p0[2])/0.8];
+  return best || fallback || [(L[0]-p0[0])/0.8, -1, (L[2]-p0[2])/0.8];
+}
+/* 發球過網時，球底離網頂多高 */
+function serveClear(p0, v, w){
+  const s = { p: p0.slice(), v: v.slice(), w: w.slice() };
+  for (let i = 0; i < 2500; i++) {
+    const pz = s.p[2];
+    stepBall(s, DT, true, null, 0);
+    if ((pz > 0) !== (s.p[2] > 0)) return s.p[1] - R - NET_H;
+  }
+  return -1;
 }
 
 /* 吃轉：來球旋轉讓回球在 上下(ev) / 左右(el) 方向偏掉的速度 */
@@ -512,7 +531,7 @@ function physicsStep(frac){
   }
   if (phase === 'toss') {
     evs.length = 0;
-    if (ball.v[1] < 0 && ball.p[1] <= 0.24) {
+    if (ball.v[1] < 0 && ball.p[1] <= 0.16) {         // 電腦在球落到離桌面約 16 cm 時擊球（真實發球的擊球點很低）
       if (server === 'A') aiServe();
     }
     if (phase === 'toss') batContact(frac);
