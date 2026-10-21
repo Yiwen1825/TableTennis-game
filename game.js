@@ -480,8 +480,15 @@ const TXT = {
   out:   ['你的球出界', '電腦出界'],
   own:   ['你的球打在自己這邊', '電腦打在自己那邊'],
   miss:  ['你沒接到', '電腦沒接到'],
-  serve: ['發球失誤', '電腦發球失誤']
+  serve: ['發球失誤', '電腦發球失誤'],
+  serveNet: ['發球擦網沒過', '電腦發球擦網沒過']
 };
+/* 擦網重發（let）：發球擦網後仍落在對方台面，這一分不算，由同一個人重發 */
+function letServe(){
+  phase = 'pointOver'; pointTimer = 1.5; awaitingHit = null;
+  banner('擦網重發', (lastHitter === 'P' ? '你的' : '電腦的') + '發球擦網後落在對方台面，重新發球', 'let');
+  updateScore();
+}
 function pointTo(winner, kind){
   const loser = other(winner);
   score[winner]++;
@@ -493,13 +500,18 @@ function pointTo(winner, kind){
 }
 function onEvent(e){
   const h = lastHitter, r = other(h);
-  if (e.type === 'cord') { netTouched = true; toast('擦網！'); return; }
+  if (e.type === 'cord') { netTouched = true; if (!isServe) toast('擦網！'); return; }
   if (e.type === 'net') { netTouched = true; return; }
   if (e.type === 'table') {
     contacts++;
     if (isServe) {
-      if (contacts === 1) { if (e.side !== h) return pointTo(r, 'serve'); }
-      else if (contacts === 2) { if (e.side !== r) return pointTo(r, 'serve'); awaitingHit = r; }
+      const fault = netTouched ? 'serveNet' : 'serve';
+      if (contacts === 1) { if (e.side !== h) return pointTo(r, fault); }
+      else if (contacts === 2) {
+        if (e.side !== r) return pointTo(r, fault);   // 擦網後沒過去（或落回自己這邊）：直接失分
+        if (netTouched) return letServe();             // 擦網後有落在對方台面：重發
+        awaitingHit = r;
+      }
       else return pointTo(h, 'miss');
     } else {
       if (contacts === 1) { if (e.side !== r) return pointTo(r, netTouched ? 'net' : 'own'); awaitingHit = r; }
@@ -509,7 +521,7 @@ function onEvent(e){
   }
   if (e.type === 'floor') {
     if (awaitingHit === r) return pointTo(h, 'miss');
-    if (isServe) return pointTo(r, 'serve');
+    if (isServe) return pointTo(r, netTouched ? 'serveNet' : 'serve');   // 擦網後出界也算發球失誤
     return pointTo(r, netTouched ? 'net' : 'out');
   }
 }

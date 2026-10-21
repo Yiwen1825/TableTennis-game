@@ -83,7 +83,7 @@ body{background:var(--arena);color:var(--fg);font-family:var(--f-body);font-size
 .banner{position:absolute;left:0;right:0;top:32%;text-align:center;pointer-events:none;font:700 36px/1.2 var(--f-body);letter-spacing:.08em;
   text-shadow:0 4px 24px rgba(0,0,0,.7);padding-inline:16px}
 .banner small{display:block;font-size:16px;font-weight:500;letter-spacing:.02em;margin-top:6px;color:var(--fg)}
-.banner.win{color:var(--good)}.banner.lose{color:var(--bad)}
+.banner.win{color:var(--good)}.banner.lose{color:var(--bad)}.banner.let{color:var(--ball)}
 .banner.pop{animation:pop .35s ease-out}
 @keyframes pop{from{transform:scale(.85);opacity:0}to{transform:none;opacity:1}}
 .toast{position:absolute;left:50%;top:46%;transform:translateX(-50%);background:var(--panel);border:1px solid var(--line);
