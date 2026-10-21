@@ -1101,7 +1101,7 @@ function frame(now){
   const wm = Math.hypot(ball.w[0], ball.w[1], ball.w[2]);
   if (wm > 0.1) {   // 旋轉視覺化放慢約 40 倍，避免看起來像倒轉
     axis.set(ball.w[0]/wm, ball.w[1]/wm, ball.w[2]/wm);
-    qRot.setFromAxisAngle(axis, wm * sdt * 0.025);
+    qRot.setFromAxisAngle(axis, Math.min(wm * sdt * 0.1, 1.2));
     ballMesh.quaternion.premultiply(qRot);
   }
   const over = Math.abs(ball.p[0]) <= HW && Math.abs(ball.p[2]) <= HL && ball.p[1] > -0.01;
