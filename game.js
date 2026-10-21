@@ -1129,10 +1129,20 @@ function updateScore(){
   $('sP').textContent = score.P; $('sA').textContent = score.A;
   $('whoP').classList.toggle('serving', server === 'P');
   $('whoA').classList.toggle('serving', server === 'A');
-  let s = '先得 11 分 · 每 2 分換發';
-  if (phase === 'serveWait' || phase === 'toss') s = server === 'P' ? (phase === 'serveWait' ? '輪到你發球：左右移動選位置，點一下拋球' : '球落下時揮拍') : '電腦發球';
-  else if (phase === 'rally') s = '對打中';
+  const rule = ruleText();
+  let s = rule;
+  if (phase === 'serveWait' || phase === 'toss') {
+    const how = server === 'P' ? (phase === 'serveWait' ? '輪到你發球：左右移動選位置，點一下拋球' : '球落下時揮拍') : '電腦發球';
+    s = deuce() ? how + ' · ' + rule : how;           // Deuce 時發球提示也要說明規則改了
+  } else if (phase === 'rally') s = deuce() ? '對打中 · ' + rule : '對打中';
   $('status').textContent = s;
+}
+/* 10 平之後是 Deuce：改成每 1 分換發，要領先 2 分（從平分連得 2 分）才獲勝 */
+function deuce(){ return score.P >= 10 && score.A >= 10; }
+function ruleText(){
+  if (deuce()) return 'Deuce : 每分換發，連得 2 分者獲勝';   // 平分或領先 1 分都顯示這句，不另外說明
+  if (score.P === 10 || score.A === 10) return '賽末點 · 每 2 分換發';
+  return '先得 11 分 · 每 2 分換發';
 }
 let bannerTimer = 0, toastTimer = 0;
 function banner(title, sub, cls){
