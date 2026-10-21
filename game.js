@@ -25,19 +25,20 @@ const SPIN_GAIN = 1.0;  // 整體旋轉倍率：各技術轉速已直接依真�
 const BASE_SPEED = 0.8; // 整體球速倍率（整場節奏變慢，弧線形狀不變）
 
 /* 板型：spin 製造上旋/側旋的能力、chop 製造下旋的能力、tempo 出球時間倍率（越小越快）、
-   ctrl 落點誤差倍率（越小越穩）、eat 受來球旋轉影響的程度、keep 保留來球旋轉的比例（顆粒會把旋轉「反過來」） */
+   ctrl 落點誤差倍率（越小越穩）、eat 受來球旋轉影響的程度、keep 保留來球旋轉的比例（顆粒會把旋轉「反過來」）、
+   sound 膠皮擊球音色（bright 越大越脆，thud 越大越悶厚） */
 const RACKETS = {
-  allround:  { name: '全能型',   mat: '五夾木＋標準反膠',   spin: 1.0,  chop: 1.0,  tempo: 1.0,  ctrl: 1.0,  eat: 1.0,  keep: 0,    color: 0xd22a3c,
+  allround:  { name: '全能型',   mat: '五夾木＋標準反膠',   spin: 1.0,  chop: 1.0,  tempo: 1.0,  ctrl: 1.0,  eat: 1.0,  keep: 0,    sound: { bright: 1.0,  thud: 1.0 },  color: 0xd22a3c,
                note: '各項平均，適合先熟悉旋轉。' },
-  offense:   { name: '弧圈進攻', mat: '碳纖維板＋澀性反膠', spin: 1.25, chop: 0.9,  tempo: 0.8,  ctrl: 1.45, eat: 1.25, keep: 0,    color: 0xff4d2e,
+  offense:   { name: '弧圈進攻', mat: '碳纖維板＋澀性反膠', spin: 1.25, chop: 0.9,  tempo: 0.8,  ctrl: 1.45, eat: 1.25, keep: 0,    sound: { bright: 1.15, thud: 1.1 },  color: 0xff4d2e,
                note: '球速快、上旋強，但對來球旋轉很敏感，落點也比較難控制。' },
-  defense:   { name: '削球防守', mat: '削球板＋軟反膠',     spin: 0.85, chop: 1.4,  tempo: 1.25, ctrl: 0.7,  eat: 0.85, keep: 0,    color: 0x2f9e6a,
+  defense:   { name: '削球防守', mat: '削球板＋軟反膠',     spin: 0.85, chop: 1.4,  tempo: 1.25, ctrl: 0.7,  eat: 0.85, keep: 0,    sound: { bright: 0.75, thud: 1.2 },  color: 0x2f9e6a,
                note: '球速慢但很穩，往下切能削出極強的下旋。' },
-  shortpips: { name: '正膠快攻', mat: '快攻板＋短顆粒',     spin: 0.6,  chop: 0.6,  tempo: 0.85, ctrl: 1.1,  eat: 0.5,  keep: 0,    color: 0x2f6fde,
+  shortpips: { name: '正膠快攻', mat: '快攻板＋短顆粒',     spin: 0.6,  chop: 0.6,  tempo: 0.85, ctrl: 1.1,  eat: 0.5,  keep: 0,    sound: { bright: 1.3,  thud: 0.9 },  color: 0x2f6fde,
                note: '轉不起來，但不太吃轉，適合彈打和快撥。' },
-  longpips:  { name: '長顆粒',   mat: '防守板＋長顆粒',     spin: 0.25, chop: 0.45, tempo: 1.15, ctrl: 0.9,  eat: 0.2,  keep: 0.7,  color: 0x8a52e0,
+  longpips:  { name: '長顆粒',   mat: '防守板＋長顆粒',     spin: 0.25, chop: 0.45, tempo: 1.15, ctrl: 0.9,  eat: 0.2,  keep: 0.7,  sound: { bright: 1.5,  thud: 0.6 },  color: 0x8a52e0,
                note: '自己幾乎轉不起來，會把來球的旋轉反過來送回去：你拉上旋，回來的是下旋。' },
-  anti:      { name: '防弧膠',   mat: '防守板＋防弧膠皮',   spin: 0.2,  chop: 0.25, tempo: 1.2,  ctrl: 0.85, eat: 0.1,  keep: 0.12, color: 0xe0b52a,
+  anti:      { name: '防弧膠',   mat: '防守板＋防弧膠皮',   spin: 0.2,  chop: 0.25, tempo: 1.2,  ctrl: 0.85, eat: 0.1,  keep: 0.12, sound: { bright: 0.5,  thud: 1.3 },  color: 0xe0b52a,
                note: '摩擦力極低，幾乎不吃轉，也幾乎不轉，回球軟而不轉。' }
 };
 const RK_KEYS = Object.keys(RACKETS);
@@ -276,7 +277,7 @@ function executeHit(h, o){
   if (sp > 30) { v[0] *= 30/sp; v[1] *= 30/sp; v[2] *= 30/sp; }
   ball.v = v; ball.w = w;
   lastHitter = h; isServe = !!o.isServe; contacts = 0; awaitingHit = null; netTouched = false; phase = 'rally';
-  Sound.hit(Math.hypot(v[0], v[1], v[2]), Math.hypot(w[0], w[1], w[2]) / TAU);
+  Sound.hit(Math.hypot(v[0], v[1], v[2]), Math.hypot(w[0], w[1], w[2]) / TAU, p0, rk.sound);
   return { res, Eabs };
 }
 
@@ -503,9 +504,10 @@ function physicsStep(frac){
   if (evs.length) {
     const spd = Math.hypot(ball.v[0], ball.v[1], ball.v[2]);
     for (const e of evs) {
-      if (e.type === 'table') { spawnMarker(e.x, e.z); Sound.table(spd); }
-      else if (e.type === 'net' || e.type === 'cord') Sound.net();
-      else if (e.type === 'floor') Sound.floor(spd);
+      const at = [e.x, 0, e.z];
+      if (e.type === 'table') { spawnMarker(e.x, e.z); Sound.table(Math.max(spd, Math.abs(ball.v[1]) * 2), at); }
+      else if (e.type === 'net' || e.type === 'cord') Sound.net(at);
+      else if (e.type === 'floor') Sound.floor(spd, at);
     }
   }
   if (phase === 'toss') {
@@ -535,62 +537,229 @@ function physicsStep(frac){
   }
 }
 
-/* ---------------- 音效（Web Audio 即時合成，不需要音檔） ---------------- */
+/* ---------------- 音效（Web Audio 即時合成，不需要音檔） ----------------
+   參考研究數據（杜賓根大學桌球擊球聲研究，arXiv 2409.11760）：
+   ・球和球拍接觸只有 1.3～1.8 毫秒 → 撞擊瞬間的「喀」做成約 1.5 毫秒
+   ・桌球彈跳聲一定會在約 11 kHz 有能量 → 加一段 9～13 kHz 的高頻脆聲，這是桌球「脆」的來源
+   ・聲音會比接觸時間長，主要是球拍振動和場地回音 → 球拍低頻共振＋球館殘響
+   ・膠皮對聲音的影響比底板大 → 各板型的膠皮有不同音色（亮度、悶度）
+   ・有沒有旋轉聽得出來，但上旋和下旋幾乎一樣 → 只依轉速大小加摩擦聲，不分方向
+   每個聲音都會依位置做左右聲道和遠近（電腦那邊比較小聲、殘響比較多）。 */
 const Sound = (() => {
-  let ctx = null, master = null, noiseBuf = null, muted = false;
+  let ctx = null, master = null, dry = null, wet = null, noiseBuf = null, muted = false;
+  function makeImpulse(sec, decay){
+    const len = Math.floor(ctx.sampleRate * sec), buf = ctx.createBuffer(2, len, ctx.sampleRate);
+    for (let ch = 0; ch < 2; ch++) {
+      const d = buf.getChannelData(ch);
+      for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, decay);
+    }
+    return buf;
+  }
   function init(){
     if (ctx) { if (ctx.state === 'suspended') ctx.resume(); return; }
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return;
     try { ctx = new AC(); } catch (_) { ctx = null; return; }
-    master = ctx.createGain(); master.gain.value = 0.6; master.connect(ctx.destination);
-    noiseBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 0.2), ctx.sampleRate);
+    // 不用壓縮器（會把撞擊瞬間壓扁、聲音變糊），直接把各聲音的音量控制在不會爆音的範圍
+    master = ctx.createGain(); master.gain.value = 0.35;
+    master.connect(ctx.destination);
+    dry = ctx.createGain(); dry.connect(master);
+    // 球館殘響：0.7 秒；高頻在空間裡衰減得快，所以殘響要比直達聲悶
+    const rev = ctx.createConvolver(); rev.buffer = makeImpulse(0.7, 3.2);
+    const revTone = ctx.createBiquadFilter(); revTone.type = 'lowpass'; revTone.frequency.value = 4000;
+    wet = ctx.createGain(); wet.gain.value = 1;
+    wet.connect(rev); rev.connect(revTone); revTone.connect(master);
+    noiseBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 0.25), ctx.sampleRate);
     const d = noiseBuf.getChannelData(0);
     for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    loadSamples();
   }
-  // 一個「喀」聲：短促的雜音經過帶通濾波，加上一個很快衰減的音高
-  function click({ freq = 2000, q = 4, tone = 1500, dur = 0.06, vol = 0.5, noise = 0.7 }){
-    if (!ctx || muted || ctx.state !== 'running') return;
-    const t = ctx.currentTime;
+  /* ---------- 真實錄音 ----------
+     把音檔放在網站的 sounds/ 資料夾，並在下面的 SAMPLE_FILES 列出檔名：
+       hit 球拍擊球、table 球落在球台、floor 落地、net 碰網
+     同一種聲音可以列多個檔案，每次隨機挑一個，聽起來比較自然。
+     有列出且讀得到就播錄音；沒列出或讀不到（例如直接用檔案總管打開 index.html）就自動改用合成音。
+     音檔最好只剪一下撞擊聲，前面不要有空白。 */
+  const SAMPLE_DIR = 'sounds/';
+  /* 有哪些音檔就列在這裡：同一種聲音放多個檔案，遊戲會隨機挑一個播 */
+  const SAMPLE_FILES = {
+    hit:   ['hit.wav', 'hit2.wav', 'hit3.wav'],
+    table: ['table.wav', 'table2.wav', 'table3.wav'],
+    floor: ['floor.wav']
+    // net: ['net.wav']   ← 之後有碰網的錄音再打開
+  };
+  const samples = {};                                   // 載入好的聲音會放在這裡，不要手動改
+  async function loadOne(file){
+    try {
+      const res = await fetch(SAMPLE_DIR + file);
+      if (!res.ok) return null;
+      const data = await res.arrayBuffer();
+      return await new Promise((ok, fail) => ctx.decodeAudioData(data, ok, fail));
+    } catch (_) { return null; }
+  }
+  function loadSamples(){
+    for (const [name, files] of Object.entries(SAMPLE_FILES)) {
+      Promise.all(files.map(loadOne)).then(list => {
+        list = list.filter(Boolean);                    // 讀不到的檔案略過
+        if (list.length) samples[name] = list;
+      });
+    }
+  }
+  let lastPick = {};
+  /* 從同一種聲音的幾個錄音裡隨機挑一個（不連續挑到同一個） */
+  function pick(name){
+    const list = samples[name];
+    if (list.length === 1) return list[0];
+    let i; do { i = Math.floor(Math.random() * list.length); } while (i === lastPick[name]);
+    lastPick[name] = i; return list[i];
+  }
+  /* 播放錄音：rate 改變音高（球越快稍微高一點），每次都有一點隨機變化 */
+  function playSample(buf, gain, rate, pos){
+    if (!ready()) return;
+    const t = ctx.currentTime + 0.003, P = place(pos);
+    const src = ctx.createBufferSource(); src.buffer = buf;
+    src.playbackRate.value = rate * jit(1, 0.04);
+    const out = ctx.createGain(); out.gain.value = gain * P.amp;
+    src.connect(out);
+    let node = out;
+    if (ctx.createStereoPanner) { const pn = ctx.createStereoPanner(); pn.pan.value = P.pan; out.connect(pn); node = pn; }
+    const send = ctx.createGain(); send.gain.value = P.rev * 0.6;
+    node.connect(dry); node.connect(send); send.connect(wet);
+    src.start(t);
+  }
+  const ready = () => ctx && !muted && ctx.state === 'running';
+  const jit = (x, k) => x * (1 + (Math.random() * 2 - 1) * k);   // 每次稍微不同，連打才不會像機器
+  /* 依位置算出聲道、音量、殘響量：鏡頭（你）在 z≈3 的地方 */
+  function place(pos){
+    const x = pos ? pos[0] : 0, z = pos ? pos[2] : 1.5;
+    const dist = Math.max(0.6, Math.hypot(x, 3 - z));
+    return { pan: clamp(x / 1.6, -0.8, 0.8), amp: clamp(1.6 / dist, 0.3, 1.2), rev: clamp(0.08 + dist * 0.05, 0.1, 0.4),
+             air: clamp(1.4 / dist, 0.35, 1) };       // 越遠，11 kHz 的高頻越少
+  }
+  /* 一段濾波過的雜音 */
+  function noise(out, t, type, f, q, a, dur, attack){
     const n = ctx.createBufferSource(); n.buffer = noiseBuf;
-    const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = freq; bp.Q.value = q;
-    const ng = ctx.createGain();
-    ng.gain.setValueAtTime(vol * noise, t); ng.gain.exponentialRampToValueAtTime(0.001, t + dur);
-    n.connect(bp); bp.connect(ng); ng.connect(master); n.start(t); n.stop(t + dur + 0.02);
-    const o = ctx.createOscillator(); o.type = 'sine';
-    o.frequency.setValueAtTime(tone, t); o.frequency.exponentialRampToValueAtTime(tone * 0.6, t + dur);
-    const og = ctx.createGain();
-    og.gain.setValueAtTime(vol * (1 - noise * 0.5), t); og.gain.exponentialRampToValueAtTime(0.001, t + dur * 0.8);
-    o.connect(og); og.connect(master); o.start(t); o.stop(t + dur + 0.02);
+    const flt = ctx.createBiquadFilter(); flt.type = type; flt.frequency.value = f; flt.Q.value = q;
+    const g = ctx.createGain();
+    if (attack) { g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(a, t + attack); }
+    else g.gain.setValueAtTime(a, t);
+    g.gain.setTargetAtTime(0.0001, t + (attack || 0), dur / 3);
+    n.connect(flt); flt.connect(g); g.connect(out);
+    n.start(t, Math.random() * 0.15); n.stop(t + (attack || 0) + dur * 4 + 0.01);
   }
-  let lastFloor = 0;
+  /* 一次撞擊
+     modes：[頻率, 音量, 衰減秒數] 的共振（球殼、球拍、桌板）
+     snap ：接觸瞬間約 1.5 ms 的寬頻「喀」
+     air  ：約 11 kHz 的高頻脆聲（研究指出桌球彈跳聲的特徵）
+     brush：膠皮刷過球的摩擦聲（只看轉速大小） */
+  function strike({ modes, snap, air, brush, formants, glide, gain, pos }){
+    if (!ready()) return;
+    const t = ctx.currentTime + 0.006, P = place(pos);   // 留一點時間給摩擦聲提早開始
+    const out = ctx.createGain(); out.gain.value = gain * P.amp;
+    let node = out;
+    if (ctx.createStereoPanner) { const pn = ctx.createStereoPanner(); pn.pan.value = P.pan; out.connect(pn); node = pn; }
+    const send = ctx.createGain(); send.gain.value = P.rev;
+    node.connect(dry); node.connect(send); send.connect(wet);
+    for (const [f, a, dec] of modes) {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = 'sine';
+      if (glide) {                                     // 「ㄆㄧㄚ」：音高從高很快滑下來（ㄧ→ㄚ）
+        o.frequency.setValueAtTime(f * glide.from, t);
+        o.frequency.exponentialRampToValueAtTime(f, t + glide.time);
+        o.frequency.exponentialRampToValueAtTime(f * 0.95, t + glide.time + dec * 2);
+      } else {
+        o.frequency.setValueAtTime(f, t);
+        o.frequency.exponentialRampToValueAtTime(f * 0.97, t + dec * 3);   // 共振會微微往下滑
+      }
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.linearRampToValueAtTime(a, t + 0.0005);
+      g.gain.setTargetAtTime(0.0001, t + 0.0005, dec / 3);
+      o.connect(g); g.connect(out); o.start(t); o.stop(t + dec * 4 + 0.02);
+    }
+    if (snap) noise(out, t, 'bandpass', snap.f, snap.q, snap.a, snap.dur || 0.0015);
+    // 共鳴峰：讓雜音帶有母音感，像「ㄚ」的 F1、F2（膠皮拍打球的「啪」）
+    if (formants) for (const [f, q, a, dur] of formants) noise(out, t + 0.0008, 'bandpass', f, q, a, dur, 0.0012);
+    if (air) {
+      noise(out, t, 'bandpass', jit(11000, 0.04), 2.2, air.a * P.air, air.dur);
+      noise(out, t, 'highpass', 9000, 0.7, air.a * 0.5 * P.air, air.dur * 0.6);
+    }
+    if (brush) noise(out, t - 0.004, 'bandpass', 6500, 0.7, brush.a, brush.dur, 0.004);
+  }
+  let lastFloor = -1;
   return {
     init,
     toggle(){ muted = !muted; return muted; },
     setMuted(m){ muted = m; },
-    // 擊球：球速越快越大聲；旋轉強（摩擦多）的雜音比例較高，聽起來比較「刷」
-    hit(speed, spin){
-      const v = Math.min(1, speed / 18), s = Math.min(1, spin / 120);
-      click({ freq: 2600 - 800*s, q: 3, tone: 1300 + 500*v, dur: 0.05 + 0.03*s, vol: 0.25 + 0.55*v, noise: 0.5 + 0.4*s });
+    /* 球拍擊球
+       speed：出球速度，spin：轉速 r/s，pos：位置，rubber：膠皮音色 { bright 亮度, thud 悶度 } */
+    hit(speed, spin, pos, rubber){
+      if (samples.hit) {                                  // 有錄音就用錄音：球越快越大聲、音高稍微高一點
+        const r0 = rubber || { bright: 1, thud: 1 }, v0 = clamp(speed / 16, 0.15, 1.2);
+        return playSample(pick('hit'), 1.6 * (0.35 + 0.55 * v0), (0.94 + 0.1 * v0) * (0.96 + 0.04 * r0.bright), pos);
+      }
+      // 擊球是「ㄆㄧㄚ」：短促的爆破（ㄆ）→ 音高很快往下滑（ㄧ→ㄚ）→ 帶母音感的中頻「啪」，不要「擦」的嘶聲
+      const r = rubber || { bright: 1, thud: 1 };
+      const v = clamp(speed / 16, 0.15, 1.2), s = clamp(spin / 130, 0, 1.2);
+      const p = jit(1, 0.035) * (0.95 + 0.1 * v) * (0.94 + 0.06 * r.bright);
+      strike({
+        pos, gain: 0.75 + 0.8 * v,
+        glide: { from: 1.45, time: 0.006 },
+        modes: [[1250 * p, 1, 0.014], [2050 * p, 0.55, 0.010], [3300 * p, 0.22 * r.bright, 0.006],
+                [430 * jit(1, 0.05), 0.25 * r.thud, 0.022]],      // 球拍底板振動
+        snap: { f: 2200, q: 0.45, a: 3.2 * (0.7 + 0.5 * v), dur: 0.0025 },
+        formants: [[850 * p, 2.5, 1.4 * r.thud, 0.018], [1350 * p, 3, 1.8, 0.016], [2400 * p, 3.5, 0.9 * r.bright, 0.010]],
+        air: { a: 0.9 * r.bright * (0.4 + 0.6 * v) * (1 - 0.4 * Math.min(1, s)), dur: 0.003 }   // 只留一點點脆，不要嘶聲
+      });
     },
-    table(speed){ click({ freq: 1400, q: 6, tone: 950, dur: 0.07, vol: Math.min(0.8, 0.15 + speed / 12), noise: 0.4 }); },
-    net(){ click({ freq: 500, q: 1.5, tone: 300, dur: 0.12, vol: 0.4, noise: 0.9 }); },
-    floor(speed){
+    // 落台：硬桌面，沒有膠皮吸收，所以比擊球更亮、更脆，加上桌板的低頻
+    table(speed, pos){
+      if (samples.table) { const v0 = clamp(Math.abs(speed) / 12, 0.1, 1.2); return playSample(pick('table'), 1.6 * (0.3 + 0.6 * v0), 0.97 + 0.06 * v0, pos); }
+      const v = clamp(Math.abs(speed) / 12, 0.1, 1.2), p = jit(1, 0.03);
+      strike({
+        pos, gain: 0.25 + 0.55 * v,
+        modes: [[1500 * p, 1, 0.009], [2800 * p, 0.75, 0.007], [4500 * p, 0.55, 0.005], [7200 * p, 0.35, 0.003],
+                [190 * jit(1, 0.05), 0.12, 0.02]],                  // 桌板低頻只要一點點，太多會變成「咚」
+        snap: { f: 4500, q: 0.5, a: 4.5 },
+        air: { a: 8 * (0.5 + 0.6 * v), dur: 0.007 }
+      });
+    },
+    // 碰網：網子是軟的，幾乎沒有高頻，悶悶的「噗」
+    net(pos){
+      if (samples.net) return playSample(pick('net'), 1.4, 1, pos);
+      strike({
+        pos, gain: 0.9,
+        modes: [[620 * jit(1, 0.05), 0.35, 0.03], [1300, 0.18, 0.015], [95, 0.15, 0.05]],
+        snap: { f: 900, q: 0.6, a: 2.5 }
+      });
+    },
+    // 落地：地板會吸收高頻，比落台低沉，遠一點所以殘響比較多
+    floor(speed, pos){
       if (!ctx) return;
-      const now = ctx.currentTime; if (now - lastFloor < 0.05) return; lastFloor = now;   // 地板連續小彈跳不要疊在一起
-      click({ freq: 700, q: 3, tone: 500, dur: 0.09, vol: Math.min(0.5, 0.06 + speed / 20), noise: 0.5 });
+      const now = ctx.currentTime; if (now - lastFloor < 0.05) return; lastFloor = now;   // 連續小彈跳不要疊在一起
+      if (samples.floor || samples.table) {               // 沒有落地錄音時，用落台錄音降低音高代替
+        const v0 = clamp(Math.abs(speed) / 8, 0.05, 1);
+        return samples.floor ? playSample(pick('floor'), 1.4 * (0.2 + 0.6 * v0), 1, pos)
+                             : playSample(pick('table'), 0.9 * (0.2 + 0.6 * v0), 0.8, pos);
+      }
+      const v = clamp(Math.abs(speed) / 8, 0.05, 1);
+      strike({
+        pos, gain: 0.12 + 0.35 * v,
+        modes: [[1250 * jit(1, 0.04), 0.8, 0.010], [2300, 0.45, 0.007], [3600, 0.22, 0.005], [130, 0.18, 0.03]],
+        snap: { f: 2500, q: 0.6, a: 2.5 },
+        air: { a: 2 * v, dur: 0.004 }
+      });
     },
     point(win){
-      if (!ctx || muted || ctx.state !== 'running') return;
+      if (!ready()) return;
       const t = ctx.currentTime;
       [0, 0.12].forEach((dt, i) => {
         const o = ctx.createOscillator(), g = ctx.createGain();
         o.type = 'triangle';
         o.frequency.value = win ? [660, 880][i] : [440, 330][i];
         g.gain.setValueAtTime(0.0001, t + dt);
-        g.gain.exponentialRampToValueAtTime(0.18, t + dt + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.12, t + dt + 0.02);
         g.gain.exponentialRampToValueAtTime(0.001, t + dt + 0.25);
-        o.connect(g); g.connect(master); o.start(t + dt); o.stop(t + dt + 0.3);
+        o.connect(g); g.connect(dry); o.start(t + dt); o.stop(t + dt + 0.3);
       });
     }
   };
