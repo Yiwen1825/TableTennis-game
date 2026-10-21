@@ -1,4 +1,4 @@
-// Yi Table Tennis YTT：物理、擊球辨識、電腦對手、球拍控制、畫面與 HUD
+// Y1 Table Tennis YTT：物理、擊球辨識、電腦對手、球拍控制、音效、設定選單、畫面與 HUD
 // 需要先載入 three.js r128（index.html 已處理）
 (function(){
 const T3 = window.THREE;
@@ -276,6 +276,7 @@ function executeHit(h, o){
   if (sp > 30) { v[0] *= 30/sp; v[1] *= 30/sp; v[2] *= 30/sp; }
   ball.v = v; ball.w = w;
   lastHitter = h; isServe = !!o.isServe; contacts = 0; awaitingHit = null; netTouched = false; phase = 'rally';
+  Sound.hit(Math.hypot(v[0], v[1], v[2]), Math.hypot(w[0], w[1], w[2]) / TAU);
   return { res, Eabs };
 }
 
@@ -429,13 +430,11 @@ function playerContact(off, serve){
   let q = 1 - Math.min(1, Math.abs(ball.v[1] + 0.3) / 3.2);
   if (ball.p[1] < 0.02) q *= 0.6;
   if (off > 0.65) q *= 1 - (off - 0.65) / 0.35 * 0.6;         // 打到拍緣
-  const lob = shiftDown || lobOn;
   const type = classifyStroke(sp, vx, vy);
   const inTop = relSpin(ball.w, ball.v).top;                  // 來球的上旋（負值＝下旋），擋球、削球會借它
   const sk = strokeParams(type, sp, vx, vy, pw, inTop);
-  const name = lob ? '放高球' : (pose.fore ? '正手' : '反手') + STROKES[type];
-  const info = executeHit('P', { top: sk.top, side: sk.side, tx: sk.tx, tz: sk.tz, sigma: (0.025 + 0.22*(1 - q)) * sk.sig, isServe: false, rk, lob, want: sk.want, comp: sk.comp });
-  if (lobOn) setLob(false);
+  const name = (pose.fore ? '正手' : '反手') + STROKES[type];
+  const info = executeHit('P', { top: sk.top, side: sk.side, tx: sk.tx, tz: sk.tz, sigma: (0.025 + 0.22*(1 - q)) * sk.sig, isServe: false, rk, want: sk.want, comp: sk.comp });
   toast(name);
   showShot(q, info, false, sp, off, name);
 }
@@ -466,6 +465,7 @@ const TXT = {
 function pointTo(winner, kind){
   const loser = other(winner);
   score[winner]++;
+  Sound.point(winner === 'P');
   phase = 'pointOver'; pointTimer = 1.6; awaitingHit = null;
   banner(winner === 'P' ? '得分' : '失分', TXT[kind][loser === 'P' ? 0 : 1], winner === 'P' ? 'win' : 'lose');
   if ((score.P >= 11 || score.A >= 11) && Math.abs(score.P - score.A) >= 2) { gameOverFlag = true; pointTimer = 1.8; }
@@ -500,7 +500,14 @@ function physicsStep(frac){
     return;
   }
   stepBall(ball, DT, true, evs, 0);
-  for (const e of evs) if (e.type === 'table') spawnMarker(e.x, e.z);
+  if (evs.length) {
+    const spd = Math.hypot(ball.v[0], ball.v[1], ball.v[2]);
+    for (const e of evs) {
+      if (e.type === 'table') { spawnMarker(e.x, e.z); Sound.table(spd); }
+      else if (e.type === 'net' || e.type === 'cord') Sound.net();
+      else if (e.type === 'floor') Sound.floor(spd);
+    }
+  }
   if (phase === 'toss') {
     evs.length = 0;
     if (ball.v[1] < 0 && ball.p[1] <= 0.24) {
@@ -527,6 +534,67 @@ function physicsStep(frac){
     }
   }
 }
+
+/* ---------------- 音效（Web Audio 即時合成，不需要音檔） ---------------- */
+const Sound = (() => {
+  let ctx = null, master = null, noiseBuf = null, muted = false;
+  function init(){
+    if (ctx) { if (ctx.state === 'suspended') ctx.resume(); return; }
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    try { ctx = new AC(); } catch (_) { ctx = null; return; }
+    master = ctx.createGain(); master.gain.value = 0.6; master.connect(ctx.destination);
+    noiseBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 0.2), ctx.sampleRate);
+    const d = noiseBuf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  }
+  // 一個「喀」聲：短促的雜音經過帶通濾波，加上一個很快衰減的音高
+  function click({ freq = 2000, q = 4, tone = 1500, dur = 0.06, vol = 0.5, noise = 0.7 }){
+    if (!ctx || muted || ctx.state !== 'running') return;
+    const t = ctx.currentTime;
+    const n = ctx.createBufferSource(); n.buffer = noiseBuf;
+    const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = freq; bp.Q.value = q;
+    const ng = ctx.createGain();
+    ng.gain.setValueAtTime(vol * noise, t); ng.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    n.connect(bp); bp.connect(ng); ng.connect(master); n.start(t); n.stop(t + dur + 0.02);
+    const o = ctx.createOscillator(); o.type = 'sine';
+    o.frequency.setValueAtTime(tone, t); o.frequency.exponentialRampToValueAtTime(tone * 0.6, t + dur);
+    const og = ctx.createGain();
+    og.gain.setValueAtTime(vol * (1 - noise * 0.5), t); og.gain.exponentialRampToValueAtTime(0.001, t + dur * 0.8);
+    o.connect(og); og.connect(master); o.start(t); o.stop(t + dur + 0.02);
+  }
+  let lastFloor = 0;
+  return {
+    init,
+    toggle(){ muted = !muted; return muted; },
+    setMuted(m){ muted = m; },
+    // 擊球：球速越快越大聲；旋轉強（摩擦多）的雜音比例較高，聽起來比較「刷」
+    hit(speed, spin){
+      const v = Math.min(1, speed / 18), s = Math.min(1, spin / 120);
+      click({ freq: 2600 - 800*s, q: 3, tone: 1300 + 500*v, dur: 0.05 + 0.03*s, vol: 0.25 + 0.55*v, noise: 0.5 + 0.4*s });
+    },
+    table(speed){ click({ freq: 1400, q: 6, tone: 950, dur: 0.07, vol: Math.min(0.8, 0.15 + speed / 12), noise: 0.4 }); },
+    net(){ click({ freq: 500, q: 1.5, tone: 300, dur: 0.12, vol: 0.4, noise: 0.9 }); },
+    floor(speed){
+      if (!ctx) return;
+      const now = ctx.currentTime; if (now - lastFloor < 0.05) return; lastFloor = now;   // 地板連續小彈跳不要疊在一起
+      click({ freq: 700, q: 3, tone: 500, dur: 0.09, vol: Math.min(0.5, 0.06 + speed / 20), noise: 0.5 });
+    },
+    point(win){
+      if (!ctx || muted || ctx.state !== 'running') return;
+      const t = ctx.currentTime;
+      [0, 0.12].forEach((dt, i) => {
+        const o = ctx.createOscillator(), g = ctx.createGain();
+        o.type = 'triangle';
+        o.frequency.value = win ? [660, 880][i] : [440, 330][i];
+        g.gain.setValueAtTime(0.0001, t + dt);
+        g.gain.exponentialRampToValueAtTime(0.18, t + dt + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.001, t + dt + 0.25);
+        o.connect(g); g.connect(master); o.start(t + dt); o.stop(t + dt + 0.3);
+      });
+    }
+  };
+})();
 
 /* ---------------- 3D 場景 ---------------- */
 const renderer = new T3.WebGLRenderer({ canvas, antialias: true });
@@ -800,8 +868,6 @@ new ResizeObserver(resize).observe(app);
 resize();
 
 /* ---------------- 球拍控制 ---------------- */
-let shiftDown = false, lobOn = false;
-function setLob(on){ lobOn = on; $('lob').setAttribute('aria-pressed', on ? 'true' : 'false'); }
 const ray = new T3.Raycaster(), ndc = new T3.Vector2(0.25, -0.35), zPlane = new T3.Plane(new T3.Vector3(0, 0, 1), 0), hitV = new T3.Vector3();
 const bat = { x: 0.3, y: 0.15, z: HL + 0.35, px: 0.3, py: 0.15, gx: 0.3, gy: 0.05, s: 1, sd: 0, vx: 0, vy: 0, refX: 0, refY: 0, flash: 0 };
 function onPlane(z){
@@ -846,16 +912,16 @@ function setNdc(e){
 function tryToss(){ if (phase === 'serveWait' && server === 'P') toss(); }
 canvas.addEventListener('pointermove', setNdc);
 canvas.addEventListener('pointerdown', e => {
+  if (menuOpen()) { setMenu(false); return; }     // 選單開著時，點球台只會關閉選單
+  Sound.init();
   setNdc(e); e.preventDefault();
   try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
   tryToss();
 });
 addEventListener('keydown', e => {
-  if (e.key === 'Shift') shiftDown = true;
+  Sound.init();
   if (e.code === 'Space' && (e.target === document.body || e.target === canvas)) { e.preventDefault(); tryToss(); }
 });
-addEventListener('keyup', e => { if (e.key === 'Shift') shiftDown = false; });
-addEventListener('blur', () => { shiftDown = false; });
 
 /* ---------------- HUD ---------------- */
 function updateScore(){
@@ -970,8 +1036,53 @@ $('ark').addEventListener('change', e => {
 });
 renderRacketCard();
 $('hint').addEventListener('change', e => { showHints = e.target.checked; });
-$('lob').addEventListener('click', () => setLob(!lobOn));
 $('slow').addEventListener('change', e => { timeScale = e.target.checked ? 0.5 : BASE_SPEED; });
+
+/* ---------------- 設定選單 ---------------- */
+const menu = $('menu'), menuBtn = $('menuBtn');
+function menuOpen(){ return !menu.hidden; }
+function setMenu(open){
+  menu.hidden = !open;
+  menuBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  if (open) { const f = menu.querySelector('input, select'); if (f) f.focus(); }
+}
+menuBtn.addEventListener('click', () => setMenu(!menuOpen()));
+addEventListener('keydown', e => { if (e.key === 'Escape' && menuOpen()) { setMenu(false); menuBtn.focus(); } });
+document.addEventListener('pointerdown', e => {
+  if (menuOpen() && !menu.contains(e.target) && !menuBtn.contains(e.target) && e.target !== canvas) setMenu(false);
+});
+function applyVisibility(){
+  $('inCard').hidden = !$('showIn').checked;
+  $('hintRow').hidden = !$('showIn').checked;     // 旋轉提示只在來球旋轉視窗開啟時出現
+  $('shCard').hidden = !$('showSh').checked;
+  $('rkCard').hidden = !$('showRk').checked;
+  $('helpBox').hidden = !$('showHelp').checked;
+}
+$('snd').addEventListener('change', e => { Sound.init(); Sound.setMuted(!e.target.checked); });
+for (const id of ['showIn', 'showSh', 'showRk', 'showHelp']) $(id).addEventListener('change', applyVisibility);
+
+/* 記住設定（只存在這台電腦的瀏覽器；讀不到就用預設值） */
+const SETTINGS = ['showIn', 'hint', 'showSh', 'showHelp', 'ark', 'prk', 'showRk', 'lvl', 'slow', 'snd'];
+function saveSettings(){
+  const o = {};
+  for (const id of SETTINGS) { const el = $(id); o[id] = el.type === 'checkbox' ? el.checked : el.value; }
+  try { localStorage.setItem('ttSettings', JSON.stringify(o)); } catch (_) {}
+}
+function loadSettings(){
+  let o = null;
+  try { o = JSON.parse(localStorage.getItem('ttSettings') || 'null'); } catch (_) {}
+  if (!o) return;
+  for (const id of SETTINGS) {
+    if (!(id in o)) continue;
+    const el = $(id);
+    if (el.type === 'checkbox') el.checked = !!o[id];
+    else if ([...el.options].some(op => op.value === o[id])) el.value = o[id];
+    el.dispatchEvent(new Event('change'));
+  }
+}
+for (const id of SETTINGS) $(id).addEventListener('change', saveSettings);
+loadSettings();
+applyVisibility();
 
 /* ---------------- 主迴圈 ---------------- */
 const qRot = new T3.Quaternion(), axis = new T3.Vector3();
@@ -990,7 +1101,7 @@ function frame(now){
   const wm = Math.hypot(ball.w[0], ball.w[1], ball.w[2]);
   if (wm > 0.1) {   // 旋轉視覺化放慢約 40 倍，避免看起來像倒轉
     axis.set(ball.w[0]/wm, ball.w[1]/wm, ball.w[2]/wm);
-    qRot.setFromAxisAngle(axis, Math.min(wm * sdt * 0.1, 1.2));
+    qRot.setFromAxisAngle(axis, wm * sdt * 0.025);
     ballMesh.quaternion.premultiply(qRot);
   }
   const over = Math.abs(ball.p[0]) <= HW && Math.abs(ball.p[2]) <= HL && ball.p[1] > -0.01;
