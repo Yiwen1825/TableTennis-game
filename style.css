@@ -29,7 +29,12 @@ body{background:var(--arena);color:var(--fg);font-family:var(--f-body);font-size
 .brand{display:flex;flex-direction:column;gap:8px;pointer-events:auto;justify-self:start;min-width:0}
 .brand h1{margin:0;font:700 15px/1.2 var(--f-body);letter-spacing:.06em;display:flex;align-items:center;gap:8px}
 .brand h1::before{content:"";width:10px;height:10px;border-radius:50%;background:var(--ball);box-shadow:0 0 10px var(--ball)}
-.menuWrap{position:relative;align-self:flex-start}
+.menuWrap{position:relative;align-self:flex-start;display:flex;gap:6px}
+.pauseIcon{display:inline-flex;gap:3px}
+.pauseIcon i{display:block;width:3px;height:11px;border-radius:1px;background:currentColor}
+#pauseBtn[aria-pressed="true"]{border-color:var(--ball);color:var(--ball)}
+#pauseBtn[aria-pressed="true"] .pauseIcon i:first-child{width:0;height:0;border-radius:0;background:none;border-left:9px solid currentColor;border-top:6px solid transparent;border-bottom:6px solid transparent}
+#pauseBtn[aria-pressed="true"] .pauseIcon i:last-child{display:none}
 .menuBtn{display:inline-flex;align-items:center;gap:8px;background:var(--panel);color:var(--fg);border:1px solid var(--line);
   border-radius:8px;padding:7px 12px;font:500 13px var(--f-body);backdrop-filter:blur(6px)}
 .menuBtn[aria-expanded="true"]{border-color:var(--ball)}

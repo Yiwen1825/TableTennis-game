@@ -20,6 +20,9 @@
           <button type="button" class="menuBtn" id="menuBtn" aria-expanded="false" aria-controls="menu">
             <span class="burger" aria-hidden="true"><i></i><i></i><i></i></span>設定
           </button>
+          <button type="button" class="menuBtn" id="pauseBtn" aria-pressed="false" title="暫停（P）">
+            <span class="pauseIcon" aria-hidden="true"><i></i><i></i></span><span id="pauseLabel">暫停</span>
+          </button>
           <div class="menu" id="menu" role="dialog" aria-label="設定" hidden>
             <section>
               <h2>資訊視窗</h2>
@@ -71,7 +74,7 @@
       <div class="help" id="helpBox">
         移動滑鼠就是移動球拍，<b>揮過球</b>就會擊球，系統會依揮法和擊球位置判斷技術<br>
         <span class="keys">拉：由下往上快揮　挑：台內短球往上輕挑　擰：反手在台內往右上擰　切：往下輕切（輕＝擺短、重＝劈長）</span><br>
-        <span class="keys">削：退到台外往下大力削　扣殺：高球用力揮　擋：拍子不動</span>　·　發球：點一下拋球，球落下時揮拍
+        <span class="keys">削：退到台外往下大力削　扣殺：高球用力揮　擋：拍子不動</span>　·　發球：點一下拋球，球落下時揮拍　·　P：暫停
       </div>
       <div class="card" id="shCard">
         <div class="lab">你的上一球</div>
@@ -84,6 +87,14 @@
 
   <div class="banner" id="banner" hidden></div>
   <div class="toast" id="toast" hidden></div>
+  <div class="overlay" id="pauseOv" hidden>
+    <div class="box">
+      <div class="lab">比賽暫停</div>
+      <div class="final" id="pauseScore">0 : 0</div>
+      <p>按 P、Esc 或下面的按鈕回到比賽</p>
+      <button id="resumeBtn" type="button">繼續比賽</button>
+    </div>
+  </div>
   <div class="overlay" id="over" hidden>
     <div class="box">
       <div class="lab">比賽結束</div>

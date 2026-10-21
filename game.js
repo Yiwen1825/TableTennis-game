@@ -1082,6 +1082,7 @@ function tryToss(){ if (phase === 'serveWait' && server === 'P') toss(); }
 canvas.addEventListener('pointermove', setNdc);
 canvas.addEventListener('pointerdown', e => {
   if (menuOpen()) { setMenu(false); return; }     // 選單開著時，點球台只會關閉選單
+  if (paused) return;                              // 暫停時點球台不會拋球
   Sound.init();
   setNdc(e); e.preventDefault();
   try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
@@ -1213,10 +1214,43 @@ function menuOpen(){ return !menu.hidden; }
 function setMenu(open){
   menu.hidden = !open;
   menuBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
-  if (open) { const f = menu.querySelector('input, select'); if (f) f.focus(); }
+  if (open) {
+    if (!paused) setPaused(true, 'menu');          // 打開設定時比賽先停住
+    const f = menu.querySelector('input, select'); if (f) f.focus();
+  } else if (pauseReason === 'menu') setPaused(false);
 }
 menuBtn.addEventListener('click', () => setMenu(!menuOpen()));
-addEventListener('keydown', e => { if (e.key === 'Escape' && menuOpen()) { setMenu(false); menuBtn.focus(); } });
+
+/* ---------------- 暫停 ----------------
+   P 鍵、Esc 或「暫停」按鈕都可以暫停／繼續；打開設定選單或切到別的分頁時也會自動暫停。
+   暫停時物理和電腦都停住，但球拍仍跟著滑鼠，繼續時才不會因為滑鼠移動過而突然揮拍。 */
+let paused = false, pauseReason = null;
+function setPaused(p, reason){
+  if (p && phase === 'over') return;               // 比賽結束畫面不用暫停
+  paused = p; pauseReason = p ? (reason || 'user') : null;
+  $('pauseOv').hidden = !(p && pauseReason !== 'menu');
+  $('pauseScore').textContent = score.P + ' : ' + score.A;
+  $('pauseBtn').setAttribute('aria-pressed', p ? 'true' : 'false');
+  $('pauseLabel').textContent = p ? '繼續' : '暫停';
+  if (!p) { acc = 0; bat.vx = 0; bat.vy = 0; }       // 繼續時不要補跑暫停期間的時間，也不要殘留揮拍速度
+  if (p && pauseReason !== 'menu') $('resumeBtn').focus();
+}
+function togglePause(){
+  if (menuOpen()) { setMenu(false); return; }
+  setPaused(!paused);
+}
+$('pauseBtn').addEventListener('click', togglePause);
+$('resumeBtn').addEventListener('click', () => setPaused(false));
+addEventListener('keydown', e => {
+  const typing = e.target && (e.target.tagName === 'SELECT' || e.target.tagName === 'INPUT');
+  if (e.key === 'Escape') {
+    if (menuOpen()) { setMenu(false); menuBtn.focus(); }
+    else togglePause();
+  } else if ((e.key === 'p' || e.key === 'P') && !typing && !e.repeat) togglePause();
+});
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && !paused && (phase === 'rally' || phase === 'toss' || phase === 'serveWait')) setPaused(true);
+});
 document.addEventListener('pointerdown', e => {
   if (menuOpen() && !menu.contains(e.target) && !menuBtn.contains(e.target) && e.target !== canvas) setMenu(false);
 });
@@ -1258,10 +1292,10 @@ const qRot = new T3.Quaternion(), axis = new T3.Vector3();
 let last = performance.now(), acc = 0, hudT = 0;
 function frame(now){
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
-  const sdt = dt * timeScale;
+  const sdt = paused ? 0 : dt * timeScale;         // 暫停時遊戲時間不前進
   acc += sdt;
   updateBat(dt);
-  if (phase === 'serveWait' && server === 'P') { ball.p[0] = serveX(); resetTrail(); }
+  if (phase === 'serveWait' && server === 'P' && !paused) { ball.p[0] = serveX(); resetTrail(); }
   const n = Math.min(120, Math.floor(acc / DT));
   for (let i = 0; i < n; i++) physicsStep((i + 1) / n);
   acc -= n * DT; if (n >= 120) acc = 0;
